@@ -22,8 +22,14 @@ public class BinaryFunction {
 
     public boolean execute() {
         try {
-            if (executionTime == EXECUTION_TIME_INFINITY) while (true);
-            else Thread.sleep(executionTime);
+            if (executionTime == EXECUTION_TIME_INFINITY) {
+                while (true) {
+                    Thread.sleep(1000);
+                }
+            }
+            else {
+                Thread.sleep(executionTime);
+            }
         }
         catch (InterruptedException e) {
             e.printStackTrace();

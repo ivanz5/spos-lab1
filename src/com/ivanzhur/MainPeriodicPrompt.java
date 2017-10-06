@@ -4,30 +4,30 @@ import java.io.IOException;
 import java.util.Scanner;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.ExecutionException;
 
 public class MainPeriodicPrompt {
 
     private static final int PROMPT_PERIOD = 2000;
 
-    private Process serverA;
-    private Process serverB;
-    private Client client;
-
+    private Server server;
     private Scanner scanner;
     private Timer timer;
+    private boolean isWaitingUserInput = false;
 
     private class PromptTimerTask extends TimerTask {
 
         @Override
         public void run() {
-            boolean isACompleted = client.isFunctionACalculated();
-            boolean isBCompleted = client.isFunctionBCalculated();
+            boolean isACompleted = server.isFunctionACalculated();
+            boolean isBCompleted = server.isFunctionBCalculated();
             String statusA = isACompleted ? "Function A is calculated" : "Calculation of function A is in progress";
             String statusB = isBCompleted ? "Function B is calculated" : "Calculation of function B is in progress";
             if (isACompleted && isBCompleted) {
                 showCalculationResult();
             }
             else {
+                isWaitingUserInput = true;
                 System.out.println(statusA);
                 System.out.println(statusB);
                 System.out.println("Options (keys):\nc - continue\nn - continue without prompt\ns - cancel calculation");
@@ -39,23 +39,23 @@ public class MainPeriodicPrompt {
                         break;
 
                     case "n":
+                        if (server.isResultCalculated()) showCalculationResult();
                         break;
 
                     default:
-                        System.out.println("timer thread: " + Thread.currentThread().getId());
-                        PromptTimerTask timerTask = new PromptTimerTask();
-                        timer.schedule(timerTask, PROMPT_PERIOD);
+                        if (server.isResultCalculated()) {
+                            showCalculationResult();
+                        }
+                        else {
+                            System.out.println("timer thread: " + Thread.currentThread().getId());
+                            PromptTimerTask timerTask = new PromptTimerTask();
+                            timer.schedule(timerTask, PROMPT_PERIOD);
+                        }
                         break;
                 }
+
+                isWaitingUserInput = false;
             }
-        }
-    }
-
-    private class ShowResultTask extends TimerTask {
-
-        @Override
-        public void run() {
-            showCalculationResult();
         }
     }
 
@@ -74,47 +74,40 @@ public class MainPeriodicPrompt {
         timer = new Timer();
     }
 
-    private void execute() throws IOException, InterruptedException {
-        int testCase = 0;
-        BinaryFunction functionA = BinaryFunction.getBinaryFunctionA(testCase);
-        BinaryFunction functionB = BinaryFunction.getBinaryFunctionB(testCase);
-
-        serverA = Server.start(1000, functionA);
-        serverB = Server.start(1001, functionB);
-        client = Client.getInstance();
-
+    private void execute() throws IOException, InterruptedException, ExecutionException {
         new Thread(() -> {
             try {
-                client.execute();
-                System.out.println(Thread.currentThread().getId());
-                ShowResultTask timerTask = new ShowResultTask();
-                timer.schedule(timerTask, 0);
+                server = new Server();
+                server.runServer();
+                if (!isWaitingUserInput) {
+                    timer.cancel();
+                    showCalculationResult();
+                }
             }
-            catch (Exception e) {}
+            catch (Exception e) {
+            }
         }).start();
-
 
         TimerTask task = new PromptTimerTask();
         timer.schedule(task, PROMPT_PERIOD);
     }
 
     private void showCalculationResult() {
-        timer.cancel();
-        System.out.println("result thread:" + Thread.currentThread().getId());
         shutDownCalculation();
+        System.out.println("result thread:" + Thread.currentThread().getId());
         System.out.println("Calculation completed");
-        System.out.println("Result: " + client.getResult());
-        System.out.println("Time: " + client.getExecutionTime());
+        System.out.println("Result: " + server.getResult());
+        System.out.println("Time: " + server.getExecutionTime());
     }
 
     private void cancelCalculation() {
-        System.out.println("cancel thread:" + Thread.currentThread().getId());
         shutDownCalculation();
+        System.out.println("cancel thread:" + Thread.currentThread().getId());
 
-        if (client.isResultCalculated()) {
+        if (server.isResultCalculated()) {
             System.out.println("Result found");
-            System.out.println("Result: " + client.getResult());
-            System.out.println("Time: " + client.getExecutionTime());
+            System.out.println("Result: " + server.getResult());
+            System.out.println("Time: " + server.getExecutionTime());
         }
         else {
             System.out.println("Calculation cancelled by user");
@@ -122,9 +115,7 @@ public class MainPeriodicPrompt {
     }
 
     private void shutDownCalculation() {
-        serverA.destroy();
-        serverB.destroy();
-        client.stop();
+        server.stop();
         timer.cancel();
     }
 }

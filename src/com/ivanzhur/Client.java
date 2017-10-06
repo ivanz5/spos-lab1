@@ -1,5 +1,6 @@
 package com.ivanzhur;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -9,26 +10,17 @@ import java.util.concurrent.Future;
 
 public class Client {
 
-    private AsynchronousSocketChannel clientA;
-    private AsynchronousSocketChannel clientB;
-    private Future<Void> futureA;
-    private Future<Void> futureB;
-    private static Client instance;
+    private AsynchronousSocketChannel client;
+    private Future<Void> future;
 
-    private boolean result;
-    private boolean isFunctionACalculated  = false;
-    private boolean isFunctionBCalculated  = false;
-    private long startTime;
-    private long executionTime;
+    private BinaryFunction function;
 
-    private Client() {
+    public Client(BinaryFunction function) {
+        this.function = function;
         try {
-            clientA = AsynchronousSocketChannel.open();
-            clientB = AsynchronousSocketChannel.open();
-            InetSocketAddress hostAddressA = new InetSocketAddress("localhost", 1000);
-            InetSocketAddress hostAddressB = new InetSocketAddress("localhost", 1001);
-            futureA = clientA.connect(hostAddressA);
-            futureB = clientB.connect(hostAddressB);
+            client = AsynchronousSocketChannel.open();
+            InetSocketAddress hostAddressA = new InetSocketAddress("localhost", 2000);
+            future = client.connect(hostAddressA);
             start();
 
         } catch (IOException e) {
@@ -36,97 +28,83 @@ public class Client {
         }
     }
 
-    public static Client getInstance() {
-        if (instance == null)
-            instance = new Client();
-        return instance;
-    }
-
     private void start() {
         try {
-            startTime = System.currentTimeMillis();
-            futureA.get();
-            futureB.get();
+            future.get();
         } catch (InterruptedException | ExecutionException e) {
             e.printStackTrace();
         }
     }
 
-    public void execute() throws InterruptedException, ExecutionException {
-        ByteBuffer buffer = ByteBuffer.allocate(1);
-        Future<Integer> readResultA = clientA.read(buffer);
+    public void readFunction() {
+        try {
+            if (client != null && client.isOpen()) {
+                ByteBuffer buffer = ByteBuffer.allocate(1);
+                Future<Integer> readResult = client.read(buffer);
+                readResult.get();
+                boolean functionResult = buffer.array()[0] == 1;
+                buffer = ByteBuffer.allocate(8);
+                long functionExecutionTime = buffer.getLong();
+                function = new BinaryFunction(functionResult, functionExecutionTime);
+                System.out.println("Function: " + functionResult + " " + functionExecutionTime);
 
-        ByteBuffer buffer2 = ByteBuffer.allocate(1);
-        Future<Integer> readResultB = clientB.read(buffer2);
-
-        while (!readResultA.isDone() || !readResultB.isDone()) {
-            if (!isFunctionACalculated && readResultA.isDone()) {
-                try {
-                    readResultA.get();
-                    boolean result = buffer.array()[0] == 1;
-                    if (!result) {
-                        executionTime = System.currentTimeMillis() - startTime;
-                        return;
-                    }
-                    isFunctionACalculated = true;
-                }
-                catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-            if (!isFunctionBCalculated && readResultB.isDone()) {
-                try {
-                    readResultB.get();
-                    boolean result = buffer2.array()[0] == 1;
-                    if (!result) {
-                        executionTime = System.currentTimeMillis() - startTime;
-                        return;
-                    }
-                    isFunctionBCalculated = true;
-                }
-                catch (Exception e) {
-                    e.printStackTrace();
-                }
+                execute();
             }
         }
-
-        readResultA.get();
-        readResultB.get();
-        boolean resultA = buffer.array()[0] == 1;
-        boolean resultB = buffer2.array()[0] == 1;
-
-        isFunctionACalculated = true;
-        isFunctionBCalculated = true;
-        result = resultA && resultB;
-        executionTime = System.currentTimeMillis() - startTime;
-    }
-
-    public void stop() {
-        try {
-            clientA.close();
-            clientB.close();
-        } catch (IOException e) {
+        catch (InterruptedException | ExecutionException e) {
             e.printStackTrace();
         }
     }
 
-    public boolean getResult() {
-        return result;
+    public void execute() throws InterruptedException, ExecutionException {
+        try {
+            if (client != null && client.isOpen()) {
+                boolean value = function.execute();
+                System.out.println("F: " + value);
+                byte b = value ? (byte)1 : (byte)0;
+                byte[] bytes = new byte[]{b};
+                ByteBuffer buffer = ByteBuffer.wrap(bytes);
+
+                client.write(buffer);
+
+                /*Future<Integer> writeResult = client.write(buffer);
+                writeResult.get();
+                buffer.clear();
+
+                client.close();*/
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
-    public boolean isFunctionACalculated() {
-        return isFunctionACalculated;
+    public static void main(String[] args) {
+        System.out.println("Start client");
+
+        boolean functionResult = Boolean.valueOf(args[0]);
+        long functionExecutionTime = Long.valueOf(args[1]);
+
+        Client client = new Client(new BinaryFunction(functionResult, functionExecutionTime));
+        //client.readFunction();
+        try {
+            client.execute();
+        }
+        catch (InterruptedException | ExecutionException e) {
+            e.printStackTrace();
+        }
     }
 
-    public boolean isFunctionBCalculated() {
-        return isFunctionBCalculated;
-    }
+    public static Process startProcess(boolean result, long time) throws IOException, InterruptedException {
+        String javaHome = System.getProperty("java.home");
+        String javaBin = javaHome + File.separator + "bin" + File.separator + "java";
+        String classpath = System.getProperty("java.class.path");
+        String className = Client.class.getCanonicalName();
 
-    public boolean isResultCalculated() {
-        return isFunctionACalculated && isFunctionBCalculated;
-    }
+        String argResult = String.valueOf(result);
+        String atrTime = String.valueOf(time);
 
-    public long getExecutionTime() {
-        return executionTime;
+        ProcessBuilder builder = new ProcessBuilder(javaBin, "-cp", classpath, className, argResult, atrTime);
+
+        return builder.start();
     }
 }
