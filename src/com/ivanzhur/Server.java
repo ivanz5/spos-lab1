@@ -21,8 +21,6 @@ public class Server {
 
     public Server() {
         int testCase = 0;
-        BinaryFunction functionA = BinaryFunction.getBinaryFunctionA(testCase);
-        BinaryFunction functionB = BinaryFunction.getBinaryFunctionB(testCase);
 
         try {
             serverChannel = AsynchronousServerSocketChannel.open();
@@ -30,45 +28,18 @@ public class Server {
             serverChannel.bind(hostAddress);
 
             try {
-                Client.startProcess(functionA.getResult(), functionA.getExecutionTime());
+                Client.startProcess(testCase, 0);
                 Future<AsynchronousSocketChannel> acceptResultA = serverChannel.accept();
                 clientChannelA = acceptResultA.get();
-                Client.startProcess(functionB.getResult(), functionB.getExecutionTime());
+                Client.startProcess(testCase, 1);
                 Future<AsynchronousSocketChannel> acceptResultB = serverChannel.accept();
                 clientChannelB = acceptResultB.get();
-                //writeFunctionsToClients();
             }
             catch (Exception e) {
                 e.printStackTrace();
             }
 
         } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void writeFunctionsToClients() {
-        try {
-            boolean resultA = true;
-            long waitTimeA = 1000;
-            boolean resultB = false;
-            long waitTimeB = 2000;
-            byte b = resultA ? (byte) 1 : (byte) 0;
-            byte[] bytes = new byte[]{b};
-            ByteBuffer buffer = ByteBuffer.allocate(9);//.wrap(bytes);
-            buffer.put(b);
-            buffer.putLong(waitTimeA);
-            Future<Integer> writeResult = clientChannelA.write(buffer);
-            writeResult.get();
-            buffer.clear();
-
-            buffer.put((byte) 0);
-            buffer.putLong(waitTimeB);
-            writeResult = clientChannelB.write(buffer);
-            writeResult.get();
-            buffer.clear();
-        }
-        catch (InterruptedException | ExecutionException e) {
             e.printStackTrace();
         }
     }
