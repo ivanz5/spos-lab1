@@ -75,8 +75,14 @@ public class MainInputListener {
             System.out.println("Result: " + server.getResult());
             System.out.println("Time: " + server.getExecutionTime());
         }
+        else if (server.isFunctionACalculated()) {
+            System.out.println("Calculation cancelled\nResult is not found because function B is not calculated");
+        }
+        else if (server.isFunctionBCalculated()) {
+            System.out.println("Calculation cancelled\nResult is not found because function A is not calculated");
+        }
         else {
-            System.out.println("Calculation cancelled by user");
+            System.out.println("Calculation cancelled\nResult is not found because both functions are not calculated");
         }
     }
 
